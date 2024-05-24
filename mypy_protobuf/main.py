@@ -458,6 +458,18 @@ class PkgWriter(object):
 
                 self.write_extensions(desc.extension, scl + [d.DescriptorProto.EXTENSION_FIELD_NUMBER])
 
+                # JSON Dict
+                if len(desc.field) > 0:
+                    wl("")
+                    wl("class JSON(typing.TypedDict, total=False):")
+                    with self._indent():
+                        for idx, field in enumerate(desc.field):
+                            if field.name in PYTHON_RESERVED:
+                                continue
+                            dict_field_type = self.python_type(field, generic_container=True, is_json=True)
+                            wl(f"{field.name}: {dict_field_type}")
+                    wl("")
+
                 # Constructor
                 wl("def __init__(")
                 with self._indent():
@@ -833,7 +845,7 @@ class PkgWriter(object):
             )
             wl("")
 
-    def python_type(self, field: d.FieldDescriptorProto, generic_container: bool = False) -> str:
+    def python_type(self, field: d.FieldDescriptorProto, generic_container: bool = False, is_json: bool = False) -> str:
         """
         generic_container
           if set, type the field with generic interfaces. Eg.
@@ -872,6 +884,11 @@ class PkgWriter(object):
         assert field.type in mapping, "Unrecognized type: " + repr(field.type)
         field_type = mapping[field.type]()
 
+        if is_json:
+            if field.type == d.FieldDescriptorProto.TYPE_MESSAGE and field_type != "google.protobuf.struct_pb2.Struct":
+                field_type = f"{field_type}.JSON"
+            elif field_type == "google.protobuf.struct_pb2.Struct":
+                field_type = "builtins.dict"
         # For non-repeated fields, we're done!
         if field.label != d.FieldDescriptorProto.LABEL_REPEATED:
             return field_type
@@ -910,6 +927,7 @@ class PkgWriter(object):
                 "RepeatedCompositeFieldContainer",
             )
         )
+
         return f"{container}[{field_type}]"
 
     def write(self) -> str:

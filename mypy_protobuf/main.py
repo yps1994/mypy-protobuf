@@ -884,25 +884,30 @@ class PkgWriter(object):
         assert field.type in mapping, "Unrecognized type: " + repr(field.type)
         field_type = mapping[field.type]()
 
-        if is_json:
-            if field.type == d.FieldDescriptorProto.TYPE_MESSAGE and field_type != "google.protobuf.struct_pb2.Struct":
+        if is_json and field.type == d.FieldDescriptorProto.TYPE_MESSAGE:
+            # TODO: Handle message without JSON class in pyi rather than
+            # checking the prefix.
+            if not field_type.startswith("google.protobuf"):
                 field_type = f"{field_type}.JSON"
-            elif field_type == "google.protobuf.struct_pb2.Struct":
-                field_type = "builtins.dict"
+            else:
+                field_type = self._builtin("dict")
+
         # For non-repeated fields, we're done!
         if field.label != d.FieldDescriptorProto.LABEL_REPEATED:
             return field_type
 
         # Scalar repeated fields go in RepeatedScalarFieldContainer
         if is_scalar(field):
-            container = (
-                self._import("collections.abc", "Iterable")
-                if generic_container
-                else self._import(
-                    "google.protobuf.internal.containers",
-                    "RepeatedScalarFieldContainer",
-                )
+            container = self._import(
+                "google.protobuf.internal.containers",
+                "RepeatedScalarFieldContainer",
             )
+
+            if is_json:
+                container = self._builtin("list")
+            elif generic_container:
+                container = self._import("collections.abc", "Iterable")
+
             return f"{container}[{field_type}]"
 
         # non-scalar repeated map fields go in ScalarMap/MessageMap
